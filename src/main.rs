@@ -58,3 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     service.waiting().await?;
     Ok(())
 }
+
+// Probe, never merged: breaks the aarch64-unknown-linux-musl build only.
+#[cfg(all(target_arch = "aarch64", target_env = "musl"))]
+compile_error!("probe: break the aarch64-unknown-linux-musl build only");
