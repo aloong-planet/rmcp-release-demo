@@ -139,7 +139,8 @@ included, goes to stderr.
 ### distribution::CON-004 Tap token scope (direct acceptance)
 
 Applies to: the token the release pipeline uses to push to `aloong-planet/homebrew-tap`; it is a
-fine-grained token whose only permission is Contents read and write on `aloong-planet/homebrew-tap`.
+fine-grained token with access to `aloong-planet/homebrew-tap` only, whose only permission beyond the
+read-only Metadata access every fine-grained token carries is Contents read and write.
 
 ## Failure modes and boundaries
 
