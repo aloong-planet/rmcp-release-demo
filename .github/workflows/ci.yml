@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A newer push to the same ref cancels the unfinished run. On the default branch this is safe only because
+# ci-scope.mjs selects every scope for a push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The job id must stay `changes`: ci-gate.mjs reads the scopes from it.
+  changes:
+    name: Changed scopes
+    runs-on: ubuntu-latest
+    outputs:
+      # one line per scope of .github/ci/routing.json
+      server: ${{ steps.scope.outputs.server }}
+    steps:
+      # every action at a full commit with its release in a comment (the github-ops skill: pin every action)
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0             # a pull request is compared from its merge base
+          persist-credentials: false
+      - id: scope
+        run: node .github/ci/ci-scope.mjs
+
+  # Always runs, so no scope lists it and the gate always requires it.
+  repo-policy:
+    name: Repository policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: node --test .github/ci/*.test.mjs
+
+  rust-checks:
+    name: Rust checks
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install the toolchain
+        run: rustup toolchain install
+      - name: Lint
+        run: cargo lint
+      - name: Test
+        run: cargo test --locked
+
+  # The host-target lint and tests do not build the release targets. This builds each target in
+  # dist-workspace.toml (distribution::CON-001) as the release does, with the dist profile, on the runner
+  # `dist plan` gives it; keep both lists in step. aarch64-apple-darwin (runner macos-15) is left out for now
+  # (distribution::REQ-002/AC-04 notes it as pending): GitHub dropped most macOS arm64 jobs for lack of runners.
+  # GitHub can drop any job that waits too long for a runner ("The job was not acquired by Runner of type hosted
+  # even after multiple attempts"); `CI gate` then fails with `builds: abandoned`, and "Re-run failed jobs" on the
+  # run clears it.
+  builds:
+    name: Build (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    strategy:
+      fail-fast: false   # each target reports its own result; a failing one does not cancel the others
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install the toolchain and the target
+        run: |
+          case "$TARGET" in
+            *-linux-musl)
+              sudo apt-get update
+              sudo apt-get install -y musl-tools
+              ;;
+          esac
+          rustup toolchain install
+          rustup target add "$TARGET"
+      - name: Build the release binary
+        run: cargo build --locked --profile dist --target "$TARGET"
+
+  # The one required check. `needs` must list every other job of this workflow. `always()` makes it run after a
+  # failure or a skip upstream, which the default `success()` would not, and in a cancelled run, which
+  # `!cancelled()` would not: a skipped required check counts as passing.
+  ci-gate:
+    name: CI gate
+    needs: [changes, repo-policy, rust-checks, builds]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Verify the selected jobs
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node .github/ci/ci-gate.mjs

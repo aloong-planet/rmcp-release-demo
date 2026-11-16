@@ -1,0 +1,198 @@
+# Installs a published release through each supported install method and talks MCP to the
+# installed binary.
+#
+# Starts in a run of its own when a Release run completes, and checks the release when that run was
+# a tag push that succeeded; it can also be run by hand for a published release. A failed job here
+# fails this run only: the release run keeps its result, and nothing is rolled back. It is not a job
+# of release.yml because GitHub skips a job there whose upstream jobs include a skipped one, and a
+# prerelease skips `publish-homebrew-formula`.
+#
+# workflow_run runs get the repository's secrets; this workflow references none and checks out only
+# the tag of a tag push, never code from a pull request.
+
+name: Post-release check
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to check, such as v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    name: Resolve the release
+    # A pull request's Release run publishes nothing, and a failed one has no complete release to check:
+    # for those this job and every job after it are skipped.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - id: resolve
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+          # A tag push's run carries the tag as its head_branch.
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [ -n "$TAG_INPUT" ]; then
+            tag="$TAG_INPUT"
+          else
+            tag="$RUN_TAG"
+          fi
+          # [[ =~ ]] anchors to the whole value, so a multi-line input cannot pass on one good line.
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::The tag is not v<major>.<minor>.<patch>[-<pre-release>]"
+            exit 1
+          fi
+          version="${tag#v}"
+          # A SemVer pre-release suffix makes a prerelease, which the tap does not carry.
+          case "$version" in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "Checking $tag (prerelease: $prerelease)"
+
+  curl:
+    name: curl installer (${{ matrix.platform }})
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS Apple Silicon
+            runner: macos-15
+          - platform: Linux x86_64
+            runner: ubuntu-24.04
+          - platform: Linux ARM64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      VERSION: ${{ needs.release.outputs.version }}
+      PRERELEASE: ${{ needs.release.outputs.prerelease }}
+    steps:
+      - name: Check out the released source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
+      - name: Take the curl command from the README
+        run: |
+          # The README's own line, so a README edit that breaks it fails here. It installs the latest
+          # stable release; a prerelease is reached with `latest/download` replaced by `download/<tag>`.
+          pattern='^curl .*/releases/latest/download/.*\| sh$'
+          count=$(grep -cE "$pattern" README.md || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::README.md gives $count curl commands with latest/download, not exactly one"
+            exit 1
+          fi
+          cmd=$(grep -E "$pattern" README.md)
+          if [ "$PRERELEASE" = true ]; then
+            cmd=${cmd/\/releases\/latest\/download\//\/releases\/download\/$TAG\/}
+          fi
+          echo "$cmd"
+          echo "INSTALL_COMMAND=$cmd" >> "$GITHUB_ENV"
+      - name: Install with the README's curl command
+        run: |
+          # Install from a PATH without ~/.local/bin, so the installer has to set PATH up itself.
+          PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$HOME/.local/bin" | paste -s -d : -)
+          sh -c "$INSTALL_COMMAND"
+      - name: The binary is at ~/.local/bin/rmcp-release-demo
+        run: test -x "$HOME/.local/bin/rmcp-release-demo"
+      - name: The installer's line in ~/.profile puts it on PATH
+        run: |
+          # Only that line runs, in a clean environment: the rest of ~/.profile (Ubuntu's adds
+          # ~/.local/bin whenever it exists) cannot make the binary resolve.
+          line=$(grep -F 'rmcp-release-demo/env.sh' "$HOME/.profile")
+          echo "$line"
+          found=$(env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c "$(printf '%s\ncommand -v rmcp-release-demo\n' "$line")")
+          echo "the line resolves rmcp-release-demo to $found"
+          test "$found" = "$HOME/.local/bin/rmcp-release-demo"
+      - name: The Linux binary is statically linked
+        if: runner.os == 'Linux'
+        run: |
+          file "$HOME/.local/bin/rmcp-release-demo"
+          file "$HOME/.local/bin/rmcp-release-demo" | grep -Eq 'statically linked|static-pie linked'
+      - name: Running the command again replaces the binary
+        run: |
+          bin="$HOME/.local/bin/rmcp-release-demo"
+          cp "$bin" "$RUNNER_TEMP/first-install"
+          printf '#!/bin/sh\nexit 1\n' > "$bin"
+          sh -c "$INSTALL_COMMAND"
+          cmp "$RUNNER_TEMP/first-install" "$bin"
+      - name: Install Rust if the runner lacks it
+        run: |
+          if ! command -v rustup > /dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+      - name: MCP requests to the installed binary
+        run: |
+          bin="$HOME/.local/bin/rmcp-release-demo"
+          RMCP_RELEASE_DEMO_BIN="$bin" RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
+            cargo test --locked --test distribution -- --show-output | tee "$RUNNER_TEMP/mcp-tests.log"
+          # Each session reports the binary it started. A test that fell back to the binary Cargo built
+          # from this checkout would pass without the release, so every report must name the installed one.
+          used=$(grep '^binary under test: ' "$RUNNER_TEMP/mcp-tests.log" | sort -u)
+          echo "$used"
+          test "$used" = "binary under test: $bin"
+
+  homebrew:
+    name: Homebrew (macOS Apple Silicon)
+    needs: release
+    # The tap carries stable releases only.
+    if: needs.release.outputs.prerelease == 'false'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - name: Check out the released source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
+      - name: Install with the README's brew command
+        run: |
+          # The README's own line, so a README edit that breaks it fails here.
+          count=$(grep -cE '^brew install ' README.md || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::README.md gives $count brew install commands, not exactly one"
+            exit 1
+          fi
+          cmd=$(grep -E '^brew install ' README.md)
+          echo "$cmd"
+          sh -c "$cmd"
+      - name: MCP requests to the installed binary
+        run: |
+          bin="$(brew --prefix)/bin/rmcp-release-demo"
+          RMCP_RELEASE_DEMO_BIN="$bin" RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
+            cargo test --locked --test distribution -- --show-output | tee "$RUNNER_TEMP/mcp-tests.log"
+          # Each session reports the binary it started. A test that fell back to the binary Cargo built
+          # from this checkout would pass without the release, so every report must name the installed one.
+          used=$(grep '^binary under test: ' "$RUNNER_TEMP/mcp-tests.log" | sort -u)
+          echo "$used"
+          test "$used" = "binary under test: $bin"

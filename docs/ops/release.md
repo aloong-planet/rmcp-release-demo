@@ -1,0 +1,98 @@
+# Releasing
+
+How to publish a release of `rmcp-release-demo`, and the one-time setup it needs. What a release produces
+and how it behaves when a step fails is specified in [the distribution spec](../specs/distribution.md).
+
+## One-time setup
+
+### The tap repository
+
+`aloong-planet/homebrew-tap` must exist before the first stable release: a public repository with a
+README. dist manages the `Formula/` directory in it; other projects may publish to the same tap.
+
+### The tap token
+
+The release pipeline pushes the formula with the Actions secret `HOMEBREW_TAP_TOKEN` of
+`aloong-planet/rmcp-release-demo`. It must be a fine-grained personal access token limited to the tap:
+
+1. GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new
+   token.
+2. Resource owner: `aloong-planet`. Repository access: Only select repositories → `aloong-planet/homebrew-tap`.
+3. Repository permissions: Contents → Read and write. Leave everything else at No access; Metadata
+   read-only is added by GitHub and cannot be removed.
+4. Set an expiration and note the date. If the organization requires approval for fine-grained tokens,
+   approve the request in the organization's settings.
+5. Store it: `gh secret set HOMEBREW_TAP_TOKEN -R aloong-planet/rmcp-release-demo` and paste the token.
+
+Rotation: generate a new token the same way, run step 5 again, then delete the old token. A stable release
+whose token has expired fails at `publish-homebrew-formula`; see "When a release fails" below.
+
+Prereleases do not use the token: the tap carries stable releases only.
+
+## Publishing a release
+
+`main` requires the `CI gate` and `plan` checks, so the version change goes through a pull request.
+
+1. Set `version` in `Cargo.toml` to the new version, `X.Y.Z` for a stable release or `X.Y.Z-rc.N` (any
+   SemVer pre-release suffix) for a prerelease, and run `cargo build` to update `Cargo.lock`.
+2. Run `cargo lint` and `cargo test --locked`, open a pull request, and merge it once `CI gate` and `plan`
+   pass.
+3. Tag the merged commit on `main` with `v` followed by the version, and push the tag:
+
+   ```sh
+   git switch main && git pull
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+4. The tag starts the `Release` workflow: `plan`, a build for each target, `build-global-artifacts` (the
+   installers), `host` (uploads the archives, checksums and installer and creates the GitHub Release),
+   `publish-homebrew-formula` (stable releases only) and `announce`. When the run succeeds, it starts
+   [the post-release check](../../.github/workflows/post-release-check.yml) in a run of its own
+   (`Post-release check` in the Actions tab). Follow both runs to the end; the post-release check succeeds
+   only when every install method passed.
+5. Write the release notes and title with `gh release edit`, following the `/github-ops` skill's release
+   conventions.
+
+## When a release fails
+
+- **A build fails.** Nothing is published. Fix the cause on `main` through a pull request and release the
+  next version; the tag of the failed attempt points at a commit without a release.
+- **`publish-homebrew-formula` fails** (for example an expired token). The GitHub Release is already out and
+  the curl installer serves it; the tap still has the previous formula and the post-release check has not
+  run. Fix the cause (replace the token), then use "Re-run failed jobs" on the release run: that re-runs the
+  publish job and the jobs after it. When the run then succeeds, the post-release check starts; if it does
+  not, run it by hand (below).
+- **The post-release check fails.** Its own run is marked failed; the release run stays green and nothing is
+  rolled back. Fix it with a new release, or revert the formula commit in the tap by hand.
+- **A job is dropped before it starts.** GitHub can drop a job that waits too long for a runner, macOS arm64
+  ones in particular (annotation "The job was not acquired by Runner of type hosted even after multiple
+  attempts"); the job fails without running a step. Nothing is wrong with the release: use "Re-run failed
+  jobs" on that run, the release run or the post-release check's. A dropped build has published nothing yet,
+  so the re-run publishes the release as usual.
+
+## The post-release check
+
+The check starts each time a `Release` run completes and goes on only for a tag push's run that succeeded;
+for a pull request's or a failed run, its run shows every job skipped. The check takes its install commands
+from `README.md` at the tag: the one line that starts with `curl `, contains `/releases/latest/download/` and
+ends with `| sh`, and the one line that starts with `brew install `. Keep each command on a single line
+there; the check fails when it finds none or more than one. For a prerelease it replaces
+`latest/download` with `download/<tag>` in the curl command. For a stable tag it runs the commands as they
+are, and they install the latest stable release, so running the check for an older stable tag fails the
+version check.
+
+Run it by hand:
+
+```sh
+gh workflow run post-release-check.yml -R aloong-planet/rmcp-release-demo -f tag=vX.Y.Z
+```
+
+## Changing the release workflow
+
+`.github/workflows/release.yml` is generated by dist (the version is `cargo-dist-version` in
+`dist-workspace.toml`). Change `dist-workspace.toml` and run `dist generate`; never edit `release.yml` by
+hand: the workflow's `plan` job fails on a pull request when the file differs from what dist would
+generate, and `main` requires `plan`, so such a pull request cannot merge. Actions are pinned to commits
+through `[dist.github-action-commits]`. The post-release check is not part of `release.yml`; it is its own
+workflow, started by the completion of a release run.
