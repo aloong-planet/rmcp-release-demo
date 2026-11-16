@@ -59,6 +59,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Probe, never merged: breaks the aarch64-unknown-linux-musl build only.
-#[cfg(all(target_arch = "aarch64", target_env = "musl"))]
-compile_error!("probe: break the aarch64-unknown-linux-musl build only");
+// Probe, never merged: breaks the aarch64-apple-darwin build only.
+#[cfg(target_os = "macos")]
+compile_error!("probe: break the aarch64-apple-darwin build only");
