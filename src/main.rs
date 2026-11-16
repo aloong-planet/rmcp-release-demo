@@ -53,6 +53,7 @@ impl ServerHandler for Server {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let unused = 1;
     eprintln!("{NAME} {VERSION} serving MCP on stdio");
     let service = Server::new().serve(transport::stdio()).await?;
     service.waiting().await?;
