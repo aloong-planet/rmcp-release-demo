@@ -44,12 +44,13 @@ Prereleases do not use the token: the tap carries stable releases only.
    git push origin vX.Y.Z
    ```
 
-4. The tag starts the `Release` workflow: `plan`, a build for each target, `host` (uploads the archives,
-   checksums and installer and creates the GitHub Release), `publish-homebrew-formula` (stable releases
-   only), `announce`, and last `custom-post-release-check`, which runs
-   [the post-release check](../../.github/workflows/post-release-check.yml). Follow the run to the end; it
-   succeeds only when every install method of the post-release check passed.
-5. Write the release notes and title (the github-ops release conventions) with `gh release edit`.
+4. The tag starts the `Release` workflow: `plan`, a build for each target, `build-global-artifacts` (the
+   installers), `host` (uploads the archives, checksums and installer and creates the GitHub Release),
+   `publish-homebrew-formula` (stable releases only), `announce`, and last `custom-post-release-check`,
+   which runs [the post-release check](../../.github/workflows/post-release-check.yml). Follow the run to
+   the end; it succeeds only when every install method of the post-release check passed.
+5. Write the release notes and title with `gh release edit`, following the `/github-ops` skill's release
+   conventions.
 
 ## When a release fails
 

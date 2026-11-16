@@ -6,8 +6,8 @@ A stdio [MCP](https://modelcontextprotocol.io) server written in Rust with
 - `echo` returns the `text` argument unchanged.
 - `version` returns the server's version.
 
-It exists to try out a release flow: version tags build it for each platform, publish a GitHub Release
-and a Homebrew formula, and every release is installed and checked by CI.
+It exists to try out a release flow: version tags build it for each platform and publish a GitHub Release
+(stable versions also update a Homebrew formula), and every release is installed and checked by CI.
 
 ## Install
 
@@ -38,7 +38,7 @@ Homebrew lives elsewhere).
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/aloong-planet/rmcp-release-demo/releases/latest/download/rmcp-release-demo-installer.sh | sh
 ```
 
-This installs the latest release to `~/.local/bin/rmcp-release-demo`, that is
+This installs the latest stable release to `~/.local/bin/rmcp-release-demo`, that is
 `/Users/<you>/.local/bin/rmcp-release-demo` on macOS and `/home/<you>/.local/bin/rmcp-release-demo` on Linux.
 When `~/.local/bin` is not on your `PATH`, the installer adds it for new shells: it writes
 `~/.config/rmcp-release-demo/env.sh` and a line that sources it to `~/.profile` and your other shell
@@ -63,8 +63,8 @@ startup files.
 
 ## Use it from an MCP client
 
-Point the client at the installed binary as a stdio server, with the absolute path from the table above.
-Many clients do not expand `~`. For example:
+Point the client at the installed binary as a stdio server, with its absolute path: the one from the table
+above, with `~` written out as in the curl installer section. Many clients do not expand `~`. For example:
 
 ```json
 {
