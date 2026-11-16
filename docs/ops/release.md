@@ -62,6 +62,11 @@ Prereleases do not use the token: the tap carries stable releases only.
   publish job and the jobs after it, the post-release check included.
 - **The post-release check fails.** The release run is marked failed and nothing is rolled back. Fix it with
   a new release, or revert the formula commit in the tap by hand.
+- **A job is dropped before it starts.** GitHub can drop a job that waits too long for a runner, macOS arm64
+  ones in particular (annotation "The job was not acquired by Runner of type hosted even after multiple
+  attempts"); the job fails without running a step. Nothing is wrong with the release: use "Re-run failed
+  jobs" on the release run. A dropped build has published nothing yet, so the re-run publishes the release as
+  usual.
 
 ## The post-release check
 
