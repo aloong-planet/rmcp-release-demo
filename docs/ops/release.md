@@ -62,15 +62,20 @@ Prereleases do not use the token: the tap carries stable releases only.
 - **The post-release check fails.** The release run is marked failed and nothing is rolled back. Fix it with
   a new release, or revert the formula commit in the tap by hand.
 
-## Running the post-release check by hand
+## The post-release check
+
+The check takes its install commands from `README.md` at the tag: the one line that starts with `curl ` and
+contains `latest/download`, and the one line that starts with `brew install `. Keep each command on a single
+line there; the check fails when it finds none or more than one. For a prerelease it replaces
+`latest/download` with `download/<tag>` in the curl command. For a stable tag it runs the commands as they
+are, and they install the latest stable release, so running the check for an older stable tag fails the
+version check.
+
+Run it by hand:
 
 ```sh
 gh workflow run post-release-check.yml -R aloong-planet/rmcp-release-demo -f tag=vX.Y.Z
 ```
-
-For a prerelease it installs that tag through its versioned installer URL. For a stable tag it uses the
-README's commands, which install the latest stable release, so running it for an older stable tag fails the
-version check.
 
 ## Changing the release workflow
 

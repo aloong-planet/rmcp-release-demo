@@ -1,12 +1,22 @@
 //! Talks MCP over stdio to the server binary, the way an MCP client launches it.
 //!
 //! Binary under test: `RMCP_RELEASE_DEMO_BIN` when set (the post-release check points it at an
-//! installed copy), otherwise the binary Cargo built for this package.
+//! installed copy), otherwise the binary Cargo built for this package. Each session writes
+//! `binary under test: <path>` to the test output; the post-release check runs with `--show-output`
+//! and fails unless every such line names the installed binary.
 //! Expected version: `RMCP_RELEASE_DEMO_EXPECTED_VERSION` when set (the post-release check passes
 //! the released version), otherwise `package.version` read from `Cargo.toml`.
 //!
-//! Not covered here: the release pipeline itself (targets, archives, checksums, installers, tap
-//! updates) only runs on a tag push; its evidence is the release run and the post-release check.
+//! Not covered here:
+//! - The release pipeline (targets, archives, checksums, installers, tap updates) runs only on a tag
+//!   push. Its evidence is the release run and the post-release check, which installs each release
+//!   with the README's commands, runs the installer's `~/.profile` line on its own, and runs the curl
+//!   command a second time over a stub.
+//! - README.md (distribution::REQ-001) is an inert file that no test reads; the post-release check
+//!   runs its install commands.
+//! - The license declarations (distribution::REQ-003) and the tap token's scope
+//!   (distribution::CON-004) are direct-acceptance items checked by inspection; the token is a GitHub
+//!   setting outside this repository.
 
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -65,6 +75,7 @@ struct Session {
 impl Session {
     fn start() -> Self {
         let binary = binary();
+        eprintln!("binary under test: {}", binary.display());
         let mut child = Command::new(&binary)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

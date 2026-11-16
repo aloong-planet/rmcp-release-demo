@@ -93,31 +93,50 @@ jobs:
         with:
           ref: ${{ needs.release.outputs.tag }}
           persist-credentials: false
+      - name: Take the curl command from the README
+        run: |
+          # The README's own line, so a README edit that breaks it fails here. It installs the latest
+          # stable release; a prerelease is reached with `latest/download` replaced by `download/<tag>`.
+          pattern='^curl .*/releases/latest/download/.*\| sh$'
+          count=$(grep -cE "$pattern" README.md || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::README.md gives $count curl commands with latest/download, not exactly one"
+            exit 1
+          fi
+          cmd=$(grep -E "$pattern" README.md)
+          if [ "$PRERELEASE" = true ]; then
+            cmd=${cmd/\/releases\/latest\/download\//\/releases\/download\/$TAG\/}
+          fi
+          echo "$cmd"
+          echo "INSTALL_COMMAND=$cmd" >> "$GITHUB_ENV"
       - name: Install with the README's curl command
         run: |
-          # The README's command installs the latest stable release; a prerelease is only reachable
-          # through its versioned URL.
-          if [ "$PRERELEASE" = true ]; then
-            url="https://github.com/aloong-planet/rmcp-release-demo/releases/download/$TAG/rmcp-release-demo-installer.sh"
-          else
-            url="https://github.com/aloong-planet/rmcp-release-demo/releases/latest/download/rmcp-release-demo-installer.sh"
-          fi
           # Install from a PATH without ~/.local/bin, so the installer has to set PATH up itself.
           PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$HOME/.local/bin" | paste -s -d : -)
-          curl --proto '=https' --tlsv1.2 -LsSf "$url" | sh
+          sh -c "$INSTALL_COMMAND"
       - name: The binary is at ~/.local/bin/rmcp-release-demo
         run: test -x "$HOME/.local/bin/rmcp-release-demo"
-      - name: New login shells find it through ~/.profile
+      - name: The installer's line in ~/.profile puts it on PATH
         run: |
-          grep -F 'rmcp-release-demo/env.sh' "$HOME/.profile"
-          found=$(env -i HOME="$HOME" PATH=/usr/bin:/bin sh -lc 'command -v rmcp-release-demo')
-          echo "login shell resolves rmcp-release-demo to $found"
+          # Only that line runs, in a clean environment: the rest of ~/.profile (Ubuntu's adds
+          # ~/.local/bin whenever it exists) cannot make the binary resolve.
+          line=$(grep -F 'rmcp-release-demo/env.sh' "$HOME/.profile")
+          echo "$line"
+          found=$(env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c "$(printf '%s\ncommand -v rmcp-release-demo\n' "$line")")
+          echo "the line resolves rmcp-release-demo to $found"
           test "$found" = "$HOME/.local/bin/rmcp-release-demo"
       - name: The Linux binary is statically linked
         if: runner.os == 'Linux'
         run: |
           file "$HOME/.local/bin/rmcp-release-demo"
           file "$HOME/.local/bin/rmcp-release-demo" | grep -Eq 'statically linked|static-pie linked'
+      - name: Running the command again replaces the binary
+        run: |
+          bin="$HOME/.local/bin/rmcp-release-demo"
+          cp "$bin" "$RUNNER_TEMP/first-install"
+          printf '#!/bin/sh\nexit 1\n' > "$bin"
+          sh -c "$INSTALL_COMMAND"
+          cmp "$RUNNER_TEMP/first-install" "$bin"
       - name: Install Rust if the runner lacks it
         run: |
           if ! command -v rustup > /dev/null 2>&1; then
@@ -126,9 +145,14 @@ jobs:
           fi
       - name: MCP requests to the installed binary
         run: |
-          RMCP_RELEASE_DEMO_BIN="$HOME/.local/bin/rmcp-release-demo" \
-          RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
-            cargo test --locked --test distribution
+          bin="$HOME/.local/bin/rmcp-release-demo"
+          RMCP_RELEASE_DEMO_BIN="$bin" RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
+            cargo test --locked --test distribution -- --show-output | tee "$RUNNER_TEMP/mcp-tests.log"
+          # Each session reports the binary it started. A test that fell back to the binary Cargo built
+          # from this checkout would pass without the release, so every report must name the installed one.
+          used=$(grep '^binary under test: ' "$RUNNER_TEMP/mcp-tests.log" | sort -u)
+          echo "$used"
+          test "$used" = "binary under test: $bin"
 
   homebrew:
     name: Homebrew (macOS Apple Silicon)
@@ -146,9 +170,23 @@ jobs:
           ref: ${{ needs.release.outputs.tag }}
           persist-credentials: false
       - name: Install with the README's brew command
-        run: brew install aloong-planet/tap/rmcp-release-demo
+        run: |
+          # The README's own line, so a README edit that breaks it fails here.
+          count=$(grep -cE '^brew install ' README.md || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::README.md gives $count brew install commands, not exactly one"
+            exit 1
+          fi
+          cmd=$(grep -E '^brew install ' README.md)
+          echo "$cmd"
+          sh -c "$cmd"
       - name: MCP requests to the installed binary
         run: |
-          RMCP_RELEASE_DEMO_BIN="$(brew --prefix)/bin/rmcp-release-demo" \
-          RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
-            cargo test --locked --test distribution
+          bin="$(brew --prefix)/bin/rmcp-release-demo"
+          RMCP_RELEASE_DEMO_BIN="$bin" RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
+            cargo test --locked --test distribution -- --show-output | tee "$RUNNER_TEMP/mcp-tests.log"
+          # Each session reports the binary it started. A test that fell back to the binary Cargo built
+          # from this checkout would pass without the release, so every report must name the installed one.
+          used=$(grep '^binary under test: ' "$RUNNER_TEMP/mcp-tests.log" | sort -u)
+          echo "$used"
+          test "$used" = "binary under test: $bin"
