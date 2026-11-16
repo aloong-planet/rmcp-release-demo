@@ -156,6 +156,12 @@ read-only Metadata access every fine-grained token carries is Contents read and 
 - **A stable release fails the post-release check.** The release run is marked failed
   (distribution::US-005/AC-06) and nothing is rolled back: the tap keeps pointing at the failed version
   until the maintainer publishes a new release or reverts the tap commit by hand.
+- **The post-release check for a stable release that is not the newest.** For a stable tag the check installs
+  with the README's commands as they are, which install the newest stable release, and the tap carries only
+  the newest formula. Run by hand (distribution::US-005/AC-01) for an older stable tag, the check therefore
+  fails: the installed binary does not report the tag's version (distribution::US-004/AC-02). For a
+  prerelease the curl installs name the tag, so the check verifies that prerelease even when a newer release
+  exists.
 - **Content the server returns.** The server renders and loads no external content; it returns text to the
   MCP client, so no renderer-created interaction surface exists on its side.
 
