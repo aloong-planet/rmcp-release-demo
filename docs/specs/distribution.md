@@ -42,7 +42,8 @@ a fixed path to put in an MCP client's config.
 - distribution::US-002/AC-05: Running the command again replaces the installed binary with the latest stable
   release.
 - distribution::US-002/AC-06: When `~/.local/bin` is not on PATH, the installer adds it for new login shells
-  through a line in `~/.profile` that sources `~/.local/bin/env`.
+  through a line in `~/.profile` that sources the installer's `rmcp-release-demo/env.sh` in the user's
+  config directory (`$XDG_CONFIG_HOME`, by default `~/.config`).
 
 ### distribution::US-003 Use the server from an MCP client
 
@@ -98,8 +99,9 @@ install method.
 - distribution::REQ-001/AC-03: For each install method, the README gives how to upgrade:
   `brew upgrade rmcp-release-demo`, or running the curl command again.
 - distribution::REQ-001/AC-04: For each install method, the README gives how to uninstall:
-  `brew uninstall rmcp-release-demo`, or deleting `~/.local/bin/rmcp-release-demo` only, leaving
-  `~/.local/bin/env` and the `~/.profile` line that other tools installed into `~/.local/bin` share.
+  `brew uninstall rmcp-release-demo`, or deleting `~/.local/bin/rmcp-release-demo` only, leaving the
+  installer's `rmcp-release-demo` config directory and the lines it added to shell startup files, because
+  they put `~/.local/bin` on PATH for every tool installed there.
 - distribution::REQ-001/AC-05: The README shows how to install a specific version with the curl installer.
 - distribution::REQ-001/AC-06: The README states, one sentence each, that Intel Mac and Windows are not
   supported.
