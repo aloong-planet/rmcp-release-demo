@@ -21,6 +21,8 @@ install-updater = false
 tap = "aloong-planet/homebrew-tap"
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
+# Install every release through each supported install method once it is published
+post-announce-jobs = ["./post-release-check"]
 
 # Pin every action dist uses to a full commit (github-ops: pin every action)
 [dist.github-action-commits]

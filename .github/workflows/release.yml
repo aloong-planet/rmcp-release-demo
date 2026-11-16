@@ -341,3 +341,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+
+  custom-post-release-check:
+    needs:
+      - plan
+      - announce
+    uses: $/.github/workflows/post-release-check.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit

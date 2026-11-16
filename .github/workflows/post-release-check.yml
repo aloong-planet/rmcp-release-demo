@@ -1,0 +1,154 @@
+# Installs a published release through each supported install method and talks MCP to the
+# installed binary.
+#
+# Runs as the last job of every release run (release.yml calls it as a dist post-announce job, set
+# in dist-workspace.toml) and can be run by hand for a published release. A failed job here marks
+# the release run failed; nothing is rolled back.
+#
+# release.yml calls this workflow with `secrets: inherit`: it must reference no secrets.
+
+name: Post-release check
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: The dist manifest of the release run
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to check, such as v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    name: Resolve the release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - id: resolve
+        env:
+          PLAN: ${{ inputs.plan }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          if [ -n "$TAG_INPUT" ]; then
+            tag="$TAG_INPUT"
+          else
+            tag=$(printf '%s' "$PLAN" | jq -r '.announcement_tag')
+          fi
+          # [[ =~ ]] anchors to the whole value, so a multi-line input cannot pass on one good line.
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::The tag is not v<major>.<minor>.<patch>[-<pre-release>]"
+            exit 1
+          fi
+          version="${tag#v}"
+          # A SemVer pre-release suffix makes a prerelease, which the tap does not carry.
+          case "$version" in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "Checking $tag (prerelease: $prerelease)"
+
+  curl:
+    name: curl installer (${{ matrix.platform }})
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS Apple Silicon
+            runner: macos-15
+          - platform: Linux x86_64
+            runner: ubuntu-24.04
+          - platform: Linux ARM64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+      VERSION: ${{ needs.release.outputs.version }}
+      PRERELEASE: ${{ needs.release.outputs.prerelease }}
+    steps:
+      - name: Check out the released source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
+      - name: Install with the README's curl command
+        run: |
+          # The README's command installs the latest stable release; a prerelease is only reachable
+          # through its versioned URL.
+          if [ "$PRERELEASE" = true ]; then
+            url="https://github.com/aloong-planet/rmcp-release-demo/releases/download/$TAG/rmcp-release-demo-installer.sh"
+          else
+            url="https://github.com/aloong-planet/rmcp-release-demo/releases/latest/download/rmcp-release-demo-installer.sh"
+          fi
+          # Install from a PATH without ~/.local/bin, so the installer has to set PATH up itself.
+          PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$HOME/.local/bin" | paste -s -d : -)
+          curl --proto '=https' --tlsv1.2 -LsSf "$url" | sh
+      - name: The binary is at ~/.local/bin/rmcp-release-demo
+        run: test -x "$HOME/.local/bin/rmcp-release-demo"
+      - name: New login shells find it through ~/.profile
+        run: |
+          grep -F 'rmcp-release-demo/env.sh' "$HOME/.profile"
+          found=$(env -i HOME="$HOME" PATH=/usr/bin:/bin sh -lc 'command -v rmcp-release-demo')
+          echo "login shell resolves rmcp-release-demo to $found"
+          test "$found" = "$HOME/.local/bin/rmcp-release-demo"
+      - name: The Linux binary is statically linked
+        if: runner.os == 'Linux'
+        run: |
+          file "$HOME/.local/bin/rmcp-release-demo"
+          file "$HOME/.local/bin/rmcp-release-demo" | grep -Eq 'statically linked|static-pie linked'
+      - name: Install Rust if the runner lacks it
+        run: |
+          if ! command -v rustup > /dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+      - name: MCP requests to the installed binary
+        run: |
+          RMCP_RELEASE_DEMO_BIN="$HOME/.local/bin/rmcp-release-demo" \
+          RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
+            cargo test --locked --test distribution
+
+  homebrew:
+    name: Homebrew (macOS Apple Silicon)
+    needs: release
+    # The tap carries stable releases only.
+    if: needs.release.outputs.prerelease == 'false'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - name: Check out the released source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
+      - name: Install with the README's brew command
+        run: brew install aloong-planet/tap/rmcp-release-demo
+      - name: MCP requests to the installed binary
+        run: |
+          RMCP_RELEASE_DEMO_BIN="$(brew --prefix)/bin/rmcp-release-demo" \
+          RMCP_RELEASE_DEMO_EXPECTED_VERSION="$VERSION" \
+            cargo test --locked --test distribution
