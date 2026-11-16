@@ -1,0 +1,10 @@
+{
+  "scopes": {
+    "server": ["rust-checks"]
+  },
+  "rules": [
+    { "reason": "Shared input", "select": "all", "paths": ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo/config.toml"] },
+    { "reason": "Documentation", "select": [], "paths": ["AGENTS.md", "CLAUDE.md", "docs/**/*.md"] },
+    { "reason": "Server", "select": ["server"], "paths": ["src/**", "tests/**"] }
+  ]
+}
