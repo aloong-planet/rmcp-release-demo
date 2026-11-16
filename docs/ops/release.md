@@ -74,9 +74,10 @@ Prereleases do not use the token: the tap carries stable releases only.
 ## The post-release check
 
 The check starts each time a `Release` run completes and goes on only for a tag push's run that succeeded;
-for a pull request's or a failed run, its run shows every job skipped. The check takes its install commands from `README.md` at the tag: the one line that starts with `curl ` and
-contains `latest/download`, and the one line that starts with `brew install `. Keep each command on a single
-line there; the check fails when it finds none or more than one. For a prerelease it replaces
+for a pull request's or a failed run, its run shows every job skipped. The check takes its install commands
+from `README.md` at the tag: the one line that starts with `curl `, contains `/releases/latest/download/` and
+ends with `| sh`, and the one line that starts with `brew install `. Keep each command on a single line
+there; the check fails when it finds none or more than one. For a prerelease it replaces
 `latest/download` with `download/<tag>` in the curl command. For a stable tag it runs the commands as they
 are, and they install the latest stable release, so running the check for an older stable tag fails the
 version check.
