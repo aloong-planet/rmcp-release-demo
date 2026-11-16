@@ -1,6 +1,6 @@
 {
   "scopes": {
-    "server": ["rust-checks"]
+    "server": ["rust-checks", "builds"]
   },
   "rules": [
     { "reason": "Shared input", "select": "all", "paths": ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo/config.toml"] },

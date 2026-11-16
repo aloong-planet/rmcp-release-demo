@@ -112,7 +112,8 @@ install method.
   request can merge.
 - distribution::REQ-002/AC-02: A pull request whose changes fail `cargo lint` fails `CI gate`.
 - distribution::REQ-002/AC-03: A pull request whose changes fail the tests fails `CI gate`.
-- distribution::REQ-002/AC-04: A pull request whose changes fail the build fails `CI gate`.
+- distribution::REQ-002/AC-04: A pull request whose changes fail the build for any target in
+  distribution::CON-001 fails `CI gate`.
 
 ### distribution::REQ-003 MIT license (direct acceptance)
 

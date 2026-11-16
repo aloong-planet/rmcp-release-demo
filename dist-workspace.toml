@@ -10,6 +10,8 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
+# The `builds` job of .github/workflows/ci.yml builds each of them on the runner `dist plan` gives it;
+# keep both lists the same.
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
 # Path that installers should place binaries in
 install-path = "~/.local/bin/"
