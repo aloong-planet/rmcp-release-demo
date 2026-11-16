@@ -143,8 +143,9 @@ fine-grained token whose only permission is Contents read and write on `aloong-p
 
 - **A target fails to build.** The release publishes nothing: no GitHub Release appears and the tap is
   unchanged, so no platform gets a partial release.
-- **Pushing the formula to the tap fails for a stable release.** The version is not published: no GitHub
-  Release is created, the post-release check does not run, and the release run is marked failed.
+- **Pushing the formula to the tap fails for a stable release.** The GitHub Release is already published,
+  because it is created before the formula is pushed, so the curl installer installs the new version; the
+  tap keeps the previous formula, the post-release check does not run, and the release run is marked failed.
 - **Prerelease and the post-release check.** For a prerelease the post-release check skips the Homebrew
   install and runs the three curl installs of distribution::US-005/AC-03 to AC-05, because the tap does not
   carry prereleases (distribution::US-004/AC-04).
