@@ -41,8 +41,8 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/aloong-planet/rmcp-rele
 This installs the latest stable release to `~/.local/bin/rmcp-release-demo`, that is
 `/Users/<you>/.local/bin/rmcp-release-demo` on macOS and `/home/<you>/.local/bin/rmcp-release-demo` on Linux.
 When `~/.local/bin` is not on your `PATH`, the installer adds it for new shells: it writes
-`~/.config/rmcp-release-demo/env.sh` and a line that sources it to `~/.profile` and your other shell
-startup files.
+`rmcp-release-demo/env.sh` in your config directory (`$XDG_CONFIG_HOME`, by default `~/.config`) and a line
+that sources it to `~/.profile` and your other shell startup files.
 
 - Upgrade: run the same command again.
 - Install a specific version: replace `latest/download` with `download/v<version>`, for example
@@ -57,9 +57,9 @@ startup files.
   rm ~/.local/bin/rmcp-release-demo
   ```
 
-  Leave `~/.config/rmcp-release-demo/` and the lines the installer added to your shell startup files in
-  place: they put `~/.local/bin` on your `PATH`, which other tools installed there may rely on, and removing
-  the file without the lines makes every new shell report a missing file.
+  Leave `rmcp-release-demo/` in your config directory and the lines the installer added to your shell
+  startup files in place: they put `~/.local/bin` on your `PATH`, which other tools installed there may rely
+  on, and removing the file without the lines makes every new shell report a missing file.
 
 ## Use it from an MCP client
 

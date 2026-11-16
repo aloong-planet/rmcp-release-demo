@@ -10,8 +10,8 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
-# The `builds` job of .github/workflows/ci.yml builds each of them on the runner `dist plan` gives it;
-# keep both lists the same.
+# The `builds` job of .github/workflows/ci.yml builds each of them on the runner `dist plan` gives it,
+# aarch64-apple-darwin excepted for now (see the job's comment); keep both lists in step.
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
 # Path that installers should place binaries in
 install-path = "~/.local/bin/"
@@ -23,8 +23,6 @@ install-updater = false
 tap = "aloong-planet/homebrew-tap"
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
-# Install every release through each supported install method once it is published
-post-announce-jobs = ["./post-release-check"]
 
 # Pin every action dist uses to a full commit (github-ops: pin every action)
 [dist.github-action-commits]

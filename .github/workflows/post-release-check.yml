@@ -1,21 +1,21 @@
 # Installs a published release through each supported install method and talks MCP to the
 # installed binary.
 #
-# Runs as the last job of every release run (release.yml calls it as a dist post-announce job, set
-# in dist-workspace.toml) and can be run by hand for a published release. A failed job here marks
-# the release run failed; nothing is rolled back.
+# Starts in a run of its own when a Release run completes, and checks the release when that run was
+# a tag push that succeeded; it can also be run by hand for a published release. A failed job here
+# fails this run only: the release run keeps its result, and nothing is rolled back. It is not a job
+# of release.yml because GitHub skips a job there whose upstream jobs include a skipped one, and a
+# prerelease skips `publish-homebrew-formula`.
 #
-# release.yml calls this workflow with `secrets: inherit`: it must reference no secrets.
+# workflow_run runs get the repository's secrets; this workflow references none and checks out only
+# the tag of a tag push, never code from a pull request.
 
 name: Post-release check
 
 on:
-  workflow_call:
-    inputs:
-      plan:
-        description: The dist manifest of the release run
-        required: true
-        type: string
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -33,6 +33,11 @@ defaults:
 jobs:
   release:
     name: Resolve the release
+    # A pull request's Release run publishes nothing, and a failed one has no complete release to check:
+    # for those this job and every job after it are skipped.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -42,13 +47,14 @@ jobs:
     steps:
       - id: resolve
         env:
-          PLAN: ${{ inputs.plan }}
           TAG_INPUT: ${{ inputs.tag }}
+          # A tag push's run carries the tag as its head_branch.
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
           if [ -n "$TAG_INPUT" ]; then
             tag="$TAG_INPUT"
           else
-            tag=$(printf '%s' "$PLAN" | jq -r '.announcement_tag')
+            tag="$RUN_TAG"
           fi
           # [[ =~ ]] anchors to the whole value, so a multi-line input cannot pass on one good line.
           if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then

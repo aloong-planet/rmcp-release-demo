@@ -8,10 +8,12 @@
 //! the released version), otherwise `package.version` read from `Cargo.toml`.
 //!
 //! Not covered here:
-//! - The release pipeline (targets, archives, checksums, installers, tap updates) runs only on a tag
-//!   push. Its evidence is the release run and the post-release check, which installs each release
-//!   with the README's commands, runs the installer's `~/.profile` line on its own, and runs the curl
-//!   command a second time over a stub.
+//! - The release pipeline runs only on a tag push. The post-release check covers what an install
+//!   gives: it installs each release with the README's commands, runs the installer's `~/.profile`
+//!   line on its own, runs the curl command a second time over a stub, and runs these tests against
+//!   the installed binary. No check reads the Release's asset list (archives, checksums, installer),
+//!   its prerelease flag or the tap's formula: they are checked by hand at the first releases and
+//!   not guarded after.
 //! - README.md (distribution::REQ-001) is an inert file that no test reads; the post-release check
 //!   runs its install commands.
 //! - The license declarations (distribution::REQ-003) and the tap token's scope

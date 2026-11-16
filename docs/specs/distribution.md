@@ -13,7 +13,7 @@ repository is that trial run, so the server only has to prove that an installed 
 builds it for macOS on Apple Silicon, Linux x86_64 and Linux ARM64 and publishes a GitHub Release that
 includes a curl installer; a stable release also updates the formula in the `aloong-planet/homebrew-tap`
 tap. After every release, CI installs the release through each supported install method and talks MCP to
-the installed binary. Pull requests merge only through a CI gate.
+the installed binary. Pull requests merge only through a CI gate and the release workflow's `plan` check.
 
 ## User Stories
 
@@ -74,8 +74,8 @@ The maintainer publishes a release by pushing a version tag, with no manual buil
 After every release, the maintainer sees whether the release installs and works through each supported
 install method.
 
-- distribution::US-005/AC-01: The post-release check runs automatically as the last step of every release
-  run, and can be re-run by hand for a published release.
+- distribution::US-005/AC-01: The post-release check starts automatically, in a run of its own, when the
+  release run of a tag push succeeds, and can be run by hand for a published release.
 - distribution::US-005/AC-02: For a stable release, the check installs the release with Homebrew on macOS on
   Apple Silicon and sends `initialize`, `tools/list` and a `tools/call` of each tool to the installed binary,
   checking the results against distribution::US-003.
@@ -85,7 +85,8 @@ install method.
   sends the same requests, with the same checks.
 - distribution::US-005/AC-05: The check installs the release with the curl installer on Linux ARM64 and
   sends the same requests, with the same checks.
-- distribution::US-005/AC-06: A failed install, request or result check marks the release run failed.
+- distribution::US-005/AC-06: A failed install, request or result check marks the post-release check's run
+  failed.
 
 ## Functional Requirements
 
@@ -106,14 +107,19 @@ install method.
 - distribution::REQ-001/AC-06: The README states, one sentence each, that Intel Mac and Windows are not
   supported.
 
-### distribution::REQ-002 Pull requests merge only through the CI gate
+### distribution::REQ-002 Pull requests merge only through the CI gate and the plan check
 
-- distribution::REQ-002/AC-01: A branch rule on `main` requires the `CI gate` check to pass before a pull
-  request can merge.
+- distribution::REQ-002/AC-01: A branch rule on `main` requires the `CI gate` check and the release
+  workflow's `plan` check to pass before a pull request can merge.
 - distribution::REQ-002/AC-02: A pull request whose changes fail `cargo lint` fails `CI gate`.
 - distribution::REQ-002/AC-03: A pull request whose changes fail the tests fails `CI gate`.
-- distribution::REQ-002/AC-04: A pull request whose changes fail the build for any target in
-  distribution::CON-001 fails `CI gate`.
+- distribution::REQ-002/AC-04: A pull request whose changes fail the release build (the dist profile) for
+  `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` fails `CI gate`.
+
+  > Pending: `CI gate` builds `aarch64-apple-darwin` too, so that a pull request whose changes fail only that
+  > build fails `CI gate`.
+- distribution::REQ-002/AC-05: A pull request that leaves `.github/workflows/release.yml` different from what
+  dist generates from the repository's dist configuration fails `plan`.
 
 ### distribution::REQ-003 MIT license (direct acceptance)
 
@@ -153,9 +159,10 @@ read-only Metadata access every fine-grained token carries is Contents read and 
 - **Prerelease and the post-release check.** For a prerelease the post-release check skips the Homebrew
   install and runs the three curl installs of distribution::US-005/AC-03 to AC-05, because the tap does not
   carry prereleases (distribution::US-004/AC-04).
-- **A stable release fails the post-release check.** The release run is marked failed
-  (distribution::US-005/AC-06) and nothing is rolled back: the tap keeps pointing at the failed version
-  until the maintainer publishes a new release or reverts the tap commit by hand.
+- **A stable release fails the post-release check.** The post-release check's run is marked failed
+  (distribution::US-005/AC-06), the release run keeps its success, and nothing is rolled back: the tap keeps
+  pointing at the failed version until the maintainer publishes a new release or reverts the tap commit by
+  hand.
 - **The post-release check for a stable release that is not the newest.** For a stable tag the check installs
   with the README's commands as they are, which install the newest stable release, and the tap carries only
   the newest formula. Run by hand (distribution::US-005/AC-01) for an older stable tag, the check therefore
@@ -176,8 +183,9 @@ read-only Metadata access every fine-grained token carries is Contents read and 
 - cargo-dist builds and publishes releases from GitHub Actions to GitHub Releases, with the shell and
   Homebrew installers. It publishes the formula to `aloong-planet/homebrew-tap`, does not publish
   prereleases to Homebrew, and the shell installer installs into `~/.local/bin/`.
-- The post-release check belongs to the release pipeline and runs after the release is published; it also
-  has a manual trigger.
+- The post-release check is a workflow of its own that the completion of a release run starts, not a job of
+  the generated release workflow: GitHub skips a job there for a prerelease, whose `publish-homebrew-formula`
+  job is skipped. It also has a manual trigger.
 - The GitHub repository `aloong-planet/rmcp-release-demo` is public, because both install methods download
   release assets anonymously.
 

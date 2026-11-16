@@ -61,11 +61,13 @@ jobs:
       - name: Test
         run: cargo test --locked
 
-  # The host-target lint and tests do not build the release targets. This builds the release binary of each
-  # target in dist-workspace.toml (distribution::CON-001) on the runner the release builds it on, as `dist plan`
-  # lists them; keep both lists the same. GitHub can drop a job that waits too long for a runner, macOS arm64 ones in
-  # particular ("The job was not acquired by Runner of type hosted even after multiple attempts"); `CI gate` then
-  # fails with `builds: abandoned`, and "Re-run failed jobs" on the run clears it.
+  # The host-target lint and tests do not build the release targets. This builds each target in
+  # dist-workspace.toml (distribution::CON-001) as the release does, with the dist profile, on the runner
+  # `dist plan` gives it; keep both lists in step. aarch64-apple-darwin (runner macos-15) is left out for now
+  # (distribution::REQ-002/AC-04 notes it as pending): GitHub dropped most macOS arm64 jobs for lack of runners.
+  # GitHub can drop any job that waits too long for a runner ("The job was not acquired by Runner of type hosted
+  # even after multiple attempts"); `CI gate` then fails with `builds: abandoned`, and "Re-run failed jobs" on the
+  # run clears it.
   builds:
     name: Build (${{ matrix.target }})
     needs: changes
@@ -74,8 +76,6 @@ jobs:
       fail-fast: false   # each target reports its own result; a failing one does not cancel the others
       matrix:
         include:
-          - target: aarch64-apple-darwin
-            runner: macos-15
           - target: x86_64-unknown-linux-musl
             runner: ubuntu-22.04
           - target: aarch64-unknown-linux-musl
@@ -98,7 +98,7 @@ jobs:
           rustup toolchain install
           rustup target add "$TARGET"
       - name: Build the release binary
-        run: cargo build --locked --release --target "$TARGET"
+        run: cargo build --locked --profile dist --target "$TARGET"
 
   # The one required check. `needs` must list every other job of this workflow. `always()` makes it run after a
   # failure or a skip upstream, which the default `success()` would not, and in a cancelled run, which
