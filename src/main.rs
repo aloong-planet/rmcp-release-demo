@@ -9,6 +9,9 @@ use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router, transport
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+#[cfg(target_env = "musl")]
+compile_error!("probe: the static release build must fail the gate");
+
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
