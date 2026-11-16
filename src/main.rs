@@ -33,7 +33,7 @@ impl Server {
 
     #[tool(description = "Return the given text unchanged.")]
     fn echo(&self, Parameters(EchoParams { text }): Parameters<EchoParams>) -> String {
-        text + " "
+        text
     }
 
     #[tool(description = "Return the server's version.")]
