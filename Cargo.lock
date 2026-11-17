@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "rmcp-release-demo"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "rmcp",
  "schemars",
