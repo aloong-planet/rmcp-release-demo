@@ -101,8 +101,7 @@ jobs:
         run: cargo build --locked --profile dist --target "$TARGET"
 
   # The one required check. `needs` must list every other job of this workflow. `always()` makes it run after a
-  # failure or a skip upstream, which the default `success()` would not, and in a cancelled run, which
-  # `!cancelled()` would not: a skipped required check counts as passing.
+  # failure or a skip upstream, which the default `success()` would not: a skipped required check counts as passing.
   ci-gate:
     name: CI gate
     needs: [changes, repo-policy, rust-checks, builds]
